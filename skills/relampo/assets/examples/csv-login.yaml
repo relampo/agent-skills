@@ -1,0 +1,56 @@
+test:
+  name: "CSV-driven login smoke"
+  description: "Per-VU CSV credentials with status assertion"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+
+data_source:
+  type: csv
+  file: "users.csv"
+  mode: per_vu
+  strategy: sequential
+  variable_names: "email,password"
+  on_exhausted: stop
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: "15s"
+  headers:
+    Accept: "application/json"
+
+scenarios:
+  - name: "Login"
+    load:
+      type: constant
+      users: 5
+      duration: 2m
+      ramp_up: 10s
+    steps:
+      - request:
+          name: "Login"
+          method: POST
+          url: /api/login
+          body:
+            email: "{{email}}"
+            password: "{{password}}"
+          extractors:
+            - type: jsonpath
+              from: body
+              var: access_token
+              expression: $.token
+              default: ""
+          assertions:
+            - type: status
+              value: 200
+
+      - request:
+          name: "Profile"
+          method: GET
+          url: /api/me
+          headers:
+            Authorization: "Bearer {{access_token}}"
+          assertions:
+            - type: status
+              value: 200

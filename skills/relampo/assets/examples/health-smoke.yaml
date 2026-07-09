@@ -1,0 +1,29 @@
+test:
+  name: "API health smoke"
+  description: "Minimal GET health check"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: "10s"
+  headers:
+    Accept: "application/json"
+
+scenarios:
+  - name: "Health"
+    load:
+      type: constant
+      users: 5
+      duration: 1m
+      ramp_up: 5s
+    steps:
+      - request:
+          name: "Health"
+          method: GET
+          url: /health
+          assertions:
+            - type: status
+              value: 200

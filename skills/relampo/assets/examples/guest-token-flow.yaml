@@ -1,0 +1,51 @@
+test:
+  name: "Guest application performance test"
+  description: "Example flow with token extraction and reuse"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+  fcm: ""
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: 10s
+  headers:
+    Accept: application/json
+
+scenarios:
+  - name: "Guest user flow"
+    load:
+      type: constant
+      users: 10
+      duration: 1m
+      ramp_up: 10s
+    steps:
+      - request:
+          name: "Create guest user"
+          method: POST
+          url: /api/1.0/auth/guest
+          body:
+            fcm: "{{fcm}}"
+            device_name: "android"
+            device_os: "Android"
+          extractors:
+            - type: jsonpath
+              from: body
+              var: access_token
+              expression: $.data.access_token
+              default: ""
+          assertions:
+            - type: status
+              value: 201
+
+      - request:
+          name: "Home"
+          method: GET
+          url: /api/2.1/home
+          headers:
+            Token: "{{access_token}}"
+            Isguest: "true"
+          assertions:
+            - type: status
+              value: 200
