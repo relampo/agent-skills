@@ -12,7 +12,7 @@ description: >
 license: MIT
 metadata:
   author: relampo
-  version: "1.0"
+  version: "1.0.1"
   docs: https://docs.relampo.com
 ---
 
@@ -22,55 +22,54 @@ Relampo turns real application flows into **versionable YAML** load tests. Prefe
 
 Official docs: https://docs.relampo.com
 
+This skill targets **YAML contract 1.0.5**, tested against CLI builds from 2026-08-26 or later.
+
 ## Preconditions
 
-1. Check the CLI:
+1. Check the CLI and its version:
 ```bash
 relampo version
 ```
-2. If missing, install then set up:
+2. If it is missing, or older than the 2026-08-26 build, install it: **https://docs.relampo.com/cli/installation**
+3. Then prepare the environment:
 ```bash
-# macOS / Linux
-curl -fsSL https://dl.relampo.com/install.sh | bash
-# optional Homebrew
-brew tap relampo/tap
-brew install --cask relampo/tap/relampo
-
-# Windows (PowerShell)
-irm https://dl.relampo.com/install.ps1 | iex
-```
-```bash
-export PATH="$HOME/.local/bin:$PATH"   # if needed
 relampo setup
 relampo version
 ```
-3. For HTTPS recording, trust the Relampo CA after `relampo setup` (`relampo cert status`).
+4. For HTTPS recording, trust the Relampo CA after `relampo setup` (`relampo cert status`).
+
+If `relampo` is installed but not found, add `~/.local/bin` to `PATH`.
 
 ## Default workflow
 
 ```text
-setup → record | converter → correlate [--apply] → editor (optional) → debug → run → distributed run
+setup → record | converter → correlate [--apply] → validate → editor/studio (human) → run → distributed run
 ```
 
 | Goal | Default command |
 | --- | --- |
 | Capture real traffic | `relampo record --port 8888 --responses --output flow.yaml` |
+| Capture gRPC traffic | `relampo record grpc --upstream host:443 --output grpc.yaml` |
 | Convert a collection | `relampo converter` |
 | Detect dynamic values | `relampo correlate flow.yaml` |
 | Apply correlations | `relampo correlate flow.yaml --apply -o flow.correlated.yaml` |
 | Selective apply | `relampo correlate flow.yaml --apply-ids "1,2,6-8" -o flow.correlated.yaml` |
+| **Check without running** | `relampo validate flow.correlated.yaml` |
 | Visual edit | `relampo editor` |
-| Diagnose (1 VU, 1 iter) | `relampo debug flow.correlated.yaml` |
+| Visual debug (1 VU, 1 iteration) | `relampo studio flow.correlated.yaml` |
 | Local load | `relampo run flow.correlated.yaml --vus 50 --duration 10m` |
+| Rate-based load | `relampo run flow.yaml --rps 200 --duration 10m` |
 | Reports | `relampo run flow.yaml --html report.html --json report.json --csv report.csv` |
 | Distributed | `relampo distributed run flow.yaml --repo perf-tests --nodes 2 --vus 100 --duration 10m` |
+
+**Use `validate`, not `debug`, from a terminal.** `relampo debug` is an alias of `relampo studio` and opens the browser editor's visual Debug view. It needs a human. `relampo validate` is the offline check that works headlessly and covers HTTP, WebSocket, gRPC, and SQL structure.
 
 **Decision tree**
 - Have a live UI/API flow to capture → **record** (proxy client through `:8888`).
 - Have Postman/collection-like assets → **converter**.
 - Know the HTTP sequence already → **hand-write YAML** from the template below.
 - After any record/convert/manual edit → **correlate** if responses create tokens/ids reused later.
-- Before load → **debug** (single-pass). `relampo run` also validates YAML before starting load. Never scale a failing single-pass flow.
+- Before load → **validate**. `relampo run` also validates as it starts. Never scale a flow you have not checked.
 
 ## Minimal YAML template
 
@@ -110,7 +109,7 @@ scenarios:
             - type: jsonpath
               from: body
               var: access_token
-              expression: $.data.access_token
+              path: $.data.access_token
               default: ""
           assertions:
             - type: status
@@ -130,6 +129,8 @@ scenarios:
 
 Short form is fine for simple calls: `- get: /health`. Use long `request` when you need headers, body, extractors, or assertions.
 
+Keep **one scenario per file**. The editor's Debug and Run views only handle one, and single-scenario files stay easier to correlate and version.
+
 ## Variable and correlation rules
 
 - Interpolate with `{{var}}` in URLs, headers, query params, and body string fields.
@@ -140,20 +141,47 @@ relampo correlate recording.yaml
 relampo correlate recording.yaml --apply -o recording.correlated.yaml
 relampo correlate recording.yaml --min-confidence 0.9
 ```
-- Extractors: `jsonpath` / `json`, `regex`, `header`, `xpath`, `boundary` (also short `extract:` map).
-- Assertions: status, contains, regex, jsonpath, header, response_time (also short `assert:` map).
+- Extractors: `jsonpath` / `json`, `regex`, `header`, `xpath`, `boundary`, `body` (also short `extract:` map).
+- Assertions: `status`, `contains`, `not_contains`, `regex`, `jsonpath`, `header`, `response_time_ms`, `response_size` (also short `assert:` map).
+
+## Built-in functions
+
+Relampo has about 180 built-ins for test data and value transforms. Canonical syntax is `{{_name(args)}}`. Full inventory: [references/builtins.md](references/builtins.md).
+
+```yaml
+body:
+  order_id: "{{_uuid()}}"
+  email: "user{{_counter(1,1,\"signup\")}}@example.com"
+  created: "{{_time(\"yyyy-MM-dd\")}}"
+  signature: "{{_hmacSha256({{payload}},{{secret}})}}"
+```
+
+**Six rules that prevent silent failures.** Each one produces a test that passes and measures nothing.
+
+1. **Errors become empty strings.** A failed built-in returns `""` instead of stopping the run. Assert on every value that matters.
+2. **Bare words are variables, not text.** `{{_upper(name)}}` reads a variable. `{{_upper("name")}}` uppercases the literal.
+3. **Results are cached per request.** Two `{{_uuid()}}` calls in one request return the same value. Only `_counter` and `_sequence` advance every time.
+4. **An unknown `_name` fails; an unknown `$name` does not.** `{{$notReal}}` silently becomes empty.
+5. **Built-ins need `{{ }}`.** `${_uuid()}` is rejected; `${...}` is for variables only.
+6. **Dates use Java tokens** (`yyyy-MM-dd HH:mm:ss`), and `E` is unsupported.
+
+Write canonical `{{_uuid()}}`. Legacy `{{$uuid}}` still works and appears in older scripts, but do not write new ones.
 
 ## Load modes (defaults)
 
 - Day-to-day local: `constant` with `users`, `duration`, optional `ramp_up`.
 - Capacity search: `load.type: intent` with `target_unit`, `target_value`, `min_vus`/`max_vus`, latency and error thresholds.
-- Other types: `ramp`, `ramp_up_down`, `throughput`, `stages` — see `references/load-and-intent.md`.
+- Other types: `ramp`, `ramp_up_down`, `throughput`, `stages` — see [references/load-and-intent.md](references/load-and-intent.md).
 
 CLI overrides for a run:
 ```bash
+relampo run scenario.yaml --vus 50 --duration 10m
+relampo run scenario.yaml --rps 200 --duration 10m
 relampo run scenario.yaml --var base_url=https://staging.example.com
 relampo run scenario.yaml --vars-file env/staging.yaml
 ```
+
+`--vus`, `--duration`, and `--rps` are rejected when the scenario uses `load.type: stages`. Edit the stages instead.
 
 ## Distributed execution
 
@@ -171,17 +199,22 @@ Read only what the task needs:
 | File | When |
 | --- | --- |
 | [references/yaml-spec.md](references/yaml-spec.md) | Authoring or editing YAML structure |
-| [references/cli-commands.md](references/cli-commands.md) | Exact CLI flags / next steps |
-| [references/correlation.md](references/correlation.md) | Tokens, apply-ids, confidence |
+| [references/builtins.md](references/builtins.md) | Test data, value transforms, date and crypto helpers |
+| [references/data-sources.md](references/data-sources.md) | CSV/TXT parameterization |
+| [references/protocols.md](references/protocols.md) | WebSocket, gRPC, WebRTC, SQL steps |
 | [references/load-and-intent.md](references/load-and-intent.md) | Load profiles and intent search |
+| [references/correlation.md](references/correlation.md) | Tokens, apply-ids, confidence |
+| [references/cli-commands.md](references/cli-commands.md) | Exact CLI flags / next steps |
+| [references/editor.md](references/editor.md) | Editor and Studio behaviour and limits |
 | [references/distributed.md](references/distributed.md) | GitHub Actions distributed runs |
 | [references/gotchas.md](references/gotchas.md) | Common failure modes |
 | [assets/examples/](assets/examples/) | Copy-paste starter scripts |
 
 ## Agent output expectations
 
-1. Produce **commit-ready YAML** (no secrets/PII).
+1. Produce **commit-ready YAML** (no secrets/PII). Pass credentials with `--var` or `--vars-file`.
 2. Give **exact shell commands** the user can run.
-3. Prefer `relampo debug path.yaml` before load; `relampo run` validates YAML as it starts.
-4. Export reports with `--html`/`--json` when summarizing results.
-5. Do not teach Relampo backend Go development from this skill — that belongs in the product source repo `AGENTS.md`.
+3. Run `relampo validate path.yaml` before suggesting load. `relampo run` validates again as it starts.
+4. Remember that `validate` is lenient — it checks structure, not meaning. It accepts an unknown assertion type or built-in name without complaint. Read the reference files; do not rely on validation to catch an invented field.
+5. Export reports with `--html`/`--json` when summarizing results.
+6. Do not teach Relampo backend Go development from this skill — that belongs in the product source repo `AGENTS.md`.

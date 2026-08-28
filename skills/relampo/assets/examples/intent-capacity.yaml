@@ -1,0 +1,40 @@
+test:
+  name: "Capacity search"
+  description: "Load by Intent — find stable RPS within latency and error limits"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: "20s"
+  headers:
+    Accept: "application/json"
+
+scenarios:
+  - name: "Search capacity"
+    load:
+      type: intent
+      duration: 30m
+      target_unit: rps
+      target_value: 500
+      min_vus: 25
+      max_vus: 500
+      warmup: 2m
+      window: 30s
+      aggressiveness: medium
+      p95_max_ms: 800
+      p99_max_ms: 2000
+      error_rate_max_pct: 1
+    steps:
+      - request:
+          name: "Search"
+          method: GET
+          url: /api/search
+          query_params:
+            q: "{{_randomFrom(\"laptop\",\"desk\",\"monitor\",\"chair\")}}"
+            page: "1"
+          assertions:
+            - type: status
+              value: 200

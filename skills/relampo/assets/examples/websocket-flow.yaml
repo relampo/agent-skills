@@ -1,0 +1,70 @@
+test:
+  name: "WebSocket notifications"
+  description: "HTTP login, then a WebSocket subscription using the extracted token"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+  ws_url: "wss://api.example.com/events"
+  username: ""
+  password: ""
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: "15s"
+  headers:
+    Accept: "application/json"
+
+scenarios:
+  - name: "Subscribe to notifications"
+    load:
+      type: constant
+      users: 20
+      duration: 5m
+      ramp_up: 20s
+    steps:
+      - request:
+          name: "Login"
+          method: POST
+          url: /api/login
+          body:
+            username: "{{username}}"
+            password: "{{password}}"
+          extractors:
+            - type: jsonpath
+              from: body
+              var: access_token
+              path: $.token
+              default: ""
+          assertions:
+            - type: status
+              value: 200
+
+      - websocket:
+          name: "Notifications channel"
+          url: "{{ws_url}}"
+          headers:
+            Authorization: "Bearer {{access_token}}"
+          timeout: 30s
+          expected_close_codes:
+            - 1000
+          actions:
+            - send:
+                type: text
+                data: '{"action":"subscribe","channel":"orders"}'
+            - receive:
+                type: text
+                timeout: 10s
+                assertions:
+                  - type: body_contains
+                    value: subscribed
+                extractors:
+                  - type: jsonpath
+                    var: subscription_id
+                    path: $.id
+                    default: ""
+            - receive:
+                type: text
+                timeout: 30s
+            - close:
+                code: 1000

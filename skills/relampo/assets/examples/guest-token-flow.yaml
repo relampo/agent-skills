@@ -33,7 +33,7 @@ scenarios:
             - type: jsonpath
               from: body
               var: access_token
-              expression: $.data.access_token
+              path: $.data.access_token
               default: ""
           assertions:
             - type: status
