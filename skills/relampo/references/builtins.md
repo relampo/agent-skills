@@ -2,7 +2,14 @@
 
 Relampo has about 180 built-in functions. Use them to generate test data, transform values, and build headers without external scripts.
 
-Targets YAML contract **1.0.5**.
+Baseline: CLI **v2.10.3**, compatibility contract **1.0.10**.
+
+## Contents
+
+- [Syntax](#syntax), [interpolation rules](#six-rules-for-reliable-interpolation), [arguments](#arguments), [errors](#errors)
+- [General](#general), [text](#text), [math](#math), [encoding](#encoding), [crypto](#crypto)
+- [Data and lists](#data-json-and-lists), [random and sequences](#random-and-sequences)
+- [Calendar](#calendar), [date formats](#date-formats), [HTTP helpers](#http-helpers)
 
 ## Syntax
 
@@ -25,15 +32,15 @@ An explicitly defined variable always wins. If you define a variable named `$uui
 
 Names starting with two underscores (`__name`) are always variables, never built-ins. The runtime uses this prefix for its own values.
 
-## Six rules that prevent silent failures
+## Six rules for reliable interpolation
 
-These are the mistakes that produce a test which passes but measures nothing.
+Use these rules when generating data or reusing values.
 
-**1. Errors become empty strings.** In the normal interpolation path, a failed built-in returns `""` instead of stopping the run. Bad arity, bad range, and bad types all fail silently. Add assertions so an empty value fails the request.
+**1. Invalid built-ins block HTTP preparation.** Failed built-ins prevent that HTTP request from being sent. Validation checks names, syntax, argument count, and constant argument types. Runtime checks cover dynamic values and ranges. Debug can still show successful sibling expressions beside a failed expression.
 
 **2. Bare words are variables, not text.** `{{_upper(name)}}` reads a variable called `name`. `{{_upper("name")}}` uppercases the literal text. If you meant text and forgot the quotes, you get an empty string.
 
-**3. Results are cached per request.** Two calls to `{{_uuid()}}` inside one request return the **same** UUID. Only `_counter` and `_sequence` advance on every call.
+**3. Direct calls evaluate per occurrence.** Two direct `{{_uuid()}}` calls generate different UUIDs. For a shared request value, define `variables: {request_id: "{{_uuid()}}"}` and reuse `{{request_id}}`. Declared variable results are cached within that request, not across the full flow.
 
 **4. An unknown `_name` is a hard error. An unknown `$name` is not.** `{{_notReal()}}` fails loudly in strict mode. `{{$notReal}}` is treated as a missing variable and becomes empty.
 
@@ -216,11 +223,12 @@ Note the path style is dotted (`user.name`, `items.1`), not JSONPath `$.user.nam
 | `_sequence(start?,increment?,name?)` | Same shape, separate namespace |
 | `_char(codePoint)` | One character |
 
-`_counter` and `_sequence` are the only built-ins exempt from per-request caching. Use them when you need a new value every time.
+`_counter` and `_sequence` advance on each call, including calls through declared variables. Their state is per VU; identical counters across VUs do not guarantee globally unique values. Prefer UUIDs for independent account names across VUs.
 
 ```yaml
 body:
-  email: "user{{_counter(1,1,\"signup\")}}@example.com"
+  email: "user-{{_uuid()}}@example.com"
+  sequence: "{{_counter(1,1,\"signup\")}}"
   ref: "{{_randomHex(16)}}"
   plan: "{{_randomFrom(\"free\",\"pro\",\"team\")}}"
 ```

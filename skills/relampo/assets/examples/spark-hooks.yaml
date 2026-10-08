@@ -1,0 +1,60 @@
+test:
+  name: "Spark request hooks"
+  description: "Normalize synthetic input before HTTP and inspect extracted data after HTTP"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+  email: "ADA@example.com"
+  normalized_email: ""
+  account_id: ""
+  account_id_copy: ""
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: 10s
+
+scenarios:
+  - name: "Create and fetch account"
+    load:
+      type: constant
+      users: 1
+      iterations: 1
+    steps:
+      - request:
+          name: "Create account"
+          method: POST
+          url: /accounts
+          body:
+            email: "{{normalized_email}}"
+          spark:
+            - name: "Normalize input"
+              when: before
+              script: |
+                vars.set("normalized_email", String(vars.get("email") || "").toLowerCase());
+            - name: "Reuse extracted account ID"
+              when: after
+              script: |
+                vars.set("account_id_copy", vars.get("account_id"));
+                vars.set("last_status", response.status);
+                vars.set("last_latency_ms", response.latency_ms);
+          extractors:
+            - type: jsonpath
+              var: account_id
+              path: $.id
+              default: ""
+          assertions:
+            - type: status
+              value: 201
+            - type: jsonpath
+              path: $.id
+            - type: jsonpath
+              path: $.email
+              value: "{{normalized_email}}"
+      - request:
+          name: "Fetch account"
+          method: GET
+          url: "/accounts/{{account_id_copy}}"
+          assertions:
+            - type: status
+              value: 200

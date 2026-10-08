@@ -1,6 +1,15 @@
 # Relampo YAML reference
 
-Targets YAML contract **1.0.5**.
+Baseline: CLI **v2.10.3**, compatibility contract **1.0.10**. Contract snapshots describe fields; runtime code determines which fields execute. `test.version` is metadata, not a schema selector.
+
+## Contents
+
+- [Root sections](#root-sections) and [skeleton](#skeleton)
+- [HTTP defaults](#http_defaults) and [auth](#auth)
+- [Scenarios and steps](#scenarios), [assertions](#assertions), [extractors](#extractors)
+- [Timing](#think_time), [retry](#retry), [error policy](#error_policy), [containers](#containers), [flow control](#flow-control)
+- [Throughput](#throughput), [multipart uploads](#multipart-uploads), [overrides](#overrides)
+- [Cookies and cache](#cookies-and-cache_manager), [metrics](#metrics), [checks](#checking-your-work)
 
 ## Root sections
 
@@ -12,12 +21,10 @@ Targets YAML contract **1.0.5**.
 | `http_defaults` | no | Defaults for every HTTP step |
 | `grpc_defaults` | no | Defaults for gRPC steps — see [protocols.md](protocols.md) |
 | `webrtc_defaults` | no | Defaults for WebRTC steps |
-| `cookies` | no | Cookie policy and seeded cookies |
-| `cache_manager` | no | In-memory response cache |
 | `metrics` | no | Reporting configuration, see below |
 | `scenarios` | yes | Flows, each with `load` and `steps` |
 
-Keep **one scenario per file**. The editor's Debug and Run views handle only one.
+Use **exactly one scenario per file**. The CLI/worker runtime executes only the first, even though validation checks all scenarios. Put `cookies` and `cache_manager` inside that scenario, not at root.
 
 ## Skeleton
 
@@ -52,6 +59,8 @@ scenarios:
 | Field | Type | Notes |
 | --- | --- | --- |
 | `base_url` | string | One URL, not a list |
+| `connection_scope` | string | `per_vu` (default) or `run` for a shared HTTP pool |
+| `dns_cache_ttl` | duration | DNS cache lifetime; non-negative |
 | `headers` | map | Applied to every request |
 | `auth` | object | See [auth](#auth) |
 | `timeout` | duration | For example `30s` |
@@ -96,17 +105,18 @@ steps:
 
 ## scenarios
 
-Each scenario takes `name`, `load`, `steps`, and optionally `cookies`, `cache_manager`, `error_policy`, `think_time`.
+Each scenario takes `name`, `load`, `steps`, and optionally `cookies`, `cache_manager`, `error_policy`. Put `think_time` in steps or inside an HTTP request, not at scenario level.
 
 For `load`, see [load-and-intent.md](load-and-intent.md).
 
 ### Step types
 
 - **HTTP**: `request`, `get`, `post`, `put`, `delete`, `patch`, `head`, `options`
-- **Other protocols**: `websocket`, `grpc`, `webrtc`, `sql`, `sql_connection` — see [protocols.md](protocols.md)
+- **Other protocols**: `websocket`, `grpc`, `webrtc`, `sql` — see [protocols.md](protocols.md)
 - **Containers**: `group`, `controller`, `transaction`, `parallel`, `one_time`, `balanced`
 - **Flow**: `if`, `loop`, `retry`
 - **Timing and checks**: `think_time`, `assertions`
+- **Data**: `data_source`, or `request.data_source` — see [data-sources.md](data-sources.md)
 
 ### HTTP requests
 
@@ -134,9 +144,13 @@ Object bodies are serialized to JSON, and Relampo sets `Content-Type: applicatio
 
 Shorthand steps keep sibling keys. Fields written next to a `get:` line are preserved rather than folded into the request.
 
+Use long `request` form for hooks, datasets, and request options. Preservation by an editor is not proof that a sibling field executes.
+
+`request.spark` contains before/after JavaScript hooks. Read [spark.md](spark.md) for ordering, supported APIs, and failure handling.
+
 ### Assertions
 
-At 1.0.5 an assertion has exactly six fields: `type`, `value`, `path`, `name`, `max_ms`, `size`.
+An assertion has six fields: `type`, `value`, `path`, `name`, `max_ms`, `size`.
 
 | `type` | Fields used |
 | --- | --- |
@@ -157,7 +171,7 @@ assertions:
   - { type: header, name: "Content-Type", value: "application/json" }
 ```
 
-**Removed at 1.0.5**: `pattern`, `expression`, `from`, `ignore_case`, and `enabled` are no longer assertion fields. They never worked on assertions and are now out of the contract. They remain valid on **extractors**.
+**Removed at 1.0.5**: `pattern`, `expression`, `from`, `ignore_case`, and `enabled` are not assertion fields. On extractors, `pattern`, `expression`, and `from` are valid; `ignore_case` and `enabled` are not runtime extractor fields. For case-insensitive regex matching, use a `(?i)` pattern.
 
 Short map form:
 
@@ -237,12 +251,15 @@ Wraps steps and repeats them on matching failures.
 
 ```yaml
 error_policy:
-  on_error: stop      # stop | continue (default continue)
+  on_error: continue
+  on_4xx: next_iteration
+  on_5xx: stop_user
+  on_timeout: next_iteration
 ```
 
-Valid at scenario and step level. Step overrides scenario.
+For HTTP requests, valid at scenario and request level. Resolution uses the request-specific rule, request fallback (`on_error`), scenario-specific rule, then scenario fallback. A request's legacy `on_error` also acts as its fallback.
 
-**Only `on_error` is read by the engine.** The fields `on_4xx`, `on_5xx`, and `on_timeout` are accepted by the schema but have no effect. Do not rely on them.
+HTTP actions: `continue`, `next_iteration`, `stop_user`. Legacy `stop` means `stop_user`, not stop the entire run. An unconfigured rule defaults to `continue`. Do not assume these actions work identically on SQL or other protocols.
 
 ### Containers
 
@@ -260,7 +277,7 @@ Valid at scenario and step level. Step overrides scenario.
     steps: [ ... ]
 ```
 
-`one_time` runs once instead of on every iteration. Use it for setup and teardown, especially SQL writes.
+`one_time` runs **once per VU**, not once per test. Top-level initialization can run before normal traversal. It is not a run-wide setup/teardown phase. Use external fixture preparation for a write that must occur exactly once.
 
 `balanced` splits traffic by share:
 
@@ -274,7 +291,9 @@ Valid at scenario and step level. Step overrides scenario.
       - group: { name: "Checkout", percentage: 30, steps: [ ... ] }
 ```
 
-`name` and `type: total` are required. Percentages must be above 0, at most 100, and sum to 100. `think_time` is not a valid direct child.
+For `type: total`, percentages must be above 0, at most 100, and sum to 100. `think_time` is not a valid direct child. `mode: virtual_users` is rejected with dynamic load profiles.
+
+`parallel` branches isolate variables and cookies, then merge after joining. Avoid conflicting writes to one variable across branches. Limits: 256 direct children and 1024 nested branches.
 
 ### Flow control
 
@@ -297,19 +316,34 @@ Valid at scenario and step level. Step overrides scenario.
 ### throughput
 
 ```yaml
-- throughput:
-    enabled: true
-    target_rps: 20
+- request:
+    method: GET
+    url: /health
+    throughput:
+      enabled: true
+      target_rps: 20
 ```
+
+`throughput` is an HTTP request option or a load mode, not a standalone step.
 
 ### Multipart uploads
 
 ```yaml
-files:
-  - field: file
-    path: /tmp/invoice.pdf
-    mime: application/pdf
+- request:
+    method: POST
+    url: /documents
+    body:
+      category: invoice
+      labels: [test, synthetic]
+    files:
+      - field: file
+        path: /tmp/invoice.pdf
+        mime: application/pdf
 ```
+
+The runtime sets the multipart boundary and each file's MIME type. Body lists create repeated form fields. Body-only multipart is possible with `Content-Type: multipart/form-data`.
+
+Attachment paths open directly from the working directory; they do not use the CSV/media fallback rules. A missing file can be logged and skipped. Assert on the server result to detect missing attachments. Upload bodies are buffered, not streamed.
 
 ### Overrides
 
@@ -329,7 +363,7 @@ cache_manager:
   max_elements: 1000
 ```
 
-A seeded cookie requires `name`, `value`, and `domain`. The cache is in memory and lasts only for the run.
+A seeded cookie requires `name`, `value`, and `domain`. Both blocks belong inside the scenario. The cache is in memory and lasts only for the run.
 
 ## metrics
 
@@ -346,6 +380,6 @@ This configures reporting only. It does not change how the runner generates load
 relampo validate scenario.yaml
 ```
 
-`validate` checks structure offline for HTTP, WebSocket, gRPC, and SQL. It is **lenient about meaning**: an unknown assertion type, an unknown load type, or a misspelled built-in all pass. Use this reference to confirm field names; do not treat a passing validation as proof the test is correct.
+`validate` checks structure and built-in names, syntax, argument count, and constant argument types. Unknown model fields can still be ignored. Dynamic values, assertion behavior, and successful API flows need runtime checks. Use this reference to confirm execution semantics.
 
 Full product docs: https://docs.relampo.com

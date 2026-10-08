@@ -1,5 +1,7 @@
 # Relampo CLI commands
 
+Baseline: CLI **v2.10.3**. Check installed `--help` when using another version.
+
 Help for any command:
 
 ```bash
@@ -28,7 +30,7 @@ relampo validate flow.yaml
 
 Covers HTTP, WebSocket, gRPC, and SQL structure. No browser and no server needed.
 
-It is lenient about meaning. An unknown assertion type, an unknown load type, and a misspelled built-in all pass. Treat it as a structural check, not a correctness proof.
+It checks built-in names, syntax, arity, and constant argument types as well as structure. Dynamic argument values need runtime checks. Unknown fields can be ignored by the model. Passing validation is not proof of correct assertions or successful API behavior.
 
 ## record
 
@@ -143,17 +145,35 @@ relampo run my-test.yaml --html report.html --json report.json --csv report.csv 
 
 `run` validates the YAML and local data-source references before load starts.
 
-Keep secrets out of committed YAML. Pass them with `--var` or `--vars-file`, and avoid `--json-all` for shared reports.
+Keep secrets out of committed YAML and command literals. Use an untracked vars file or environment-derived values. Avoid `--json-all` for shared reports.
 
-## distributed
+## github / gitlab
 
 ```bash
-relampo distributed setup --repo owner/perf-tests
-relampo distributed files upload --repo owner/perf-tests --files "[/path/test.yaml,/path/users.csv]"
-relampo distributed run /path/test.yaml --repo owner/perf-tests --nodes 2 --vus 100 --duration 10m
+relampo github setup --repo owner/perf-tests
+relampo github run /path/test.yaml --repo owner/perf-tests --nodes 2 --vus 100 --duration 10m
+relampo gitlab setup --repo group/perf-tests
+relampo gitlab run /path/test.yaml --repo group/perf-tests --nodes 2 --vus 100 --duration 10m --html report.html
+relampo gitlab run /path/test.yaml --repo group/perf-tests --host gitlab.example.com --runner-tags load-test --nodes 2 --vus 100 --duration 10m
 ```
 
-Needs `git`, `gh`, and an authenticated GitHub CLI. See [distributed.md](distributed.md).
+The removed `distributed` command is not an alias. Use `git` and authenticated `gh` for GitHub, or `git` and authenticated `glab` for GitLab.
+
+Provider commands include `setup`, `run`, `push`, and `files upload|update|remove`. Obtain explicit approval: these commands can commit and push files.
+
+| Flag | Meaning on provider `run` |
+| --- | --- |
+| `--nodes` | Worker count, default 2 |
+| `--vus` | Total VUs across workers |
+| `--duration` | YAML duration override, subject to license limits |
+| `--repo` | GitHub repository or GitLab project |
+| `--trigger=false` | Publish/prepare without starting execution |
+| `--watch=false` | Start without waiting; report export flags require `--watch=true` |
+| `--json`, `--html`, `--csv`, `--text` | Generate remote reports; **filename only**, not local paths |
+| `--host` | GitLab host; falls back to `GITLAB_HOST` or `gitlab.com` |
+| `--runner-tags` | GitLab worker runner tags |
+
+Reports require manual download: GitHub publication links or GitLab job artifacts. Active CSV/TXT bindings are packaged automatically. See [distributed.md](distributed.md).
 
 ## Other
 

@@ -6,26 +6,28 @@ The skill documents the shipped Relampo product. When the skill and the product 
 
 Sources, in order of authority:
 
-1. **Relampo backend source** — the YAML specification document, the compatibility contract JSON (a code-generated field inventory, currently schema **1.0.5**), and the runtime built-in registrations.
-2. **The YAML editor** — its bundled contract version, its semantic validation messages, and its product spec. The editor's bundle can lag the backend; today it is at 1.0.4.
+1. **Released Relampo backend source and binary** — runtime code, tests, compatibility contract, and command help. Baseline: CLI **v2.10.3**, contract **1.0.10**, schema version **1**. `test.version` is metadata.
+2. **The YAML editor** — the active build's contract bundle and semantic messages. Source includes a 1.0.10 bundle, but deployment versions can differ.
 3. **https://docs.relampo.com** — cross-check only. If the backend ships something the public docs do not list, document it here and report the docs gap.
 
 ## Re-syncing
 
-1. Read the backend YAML specification and diff the field lists against `references/yaml-spec.md`.
+1. Find the latest stable release. Compare local files with that release before documenting them. Planning docs and unmerged changes are not shipped features.
 2. Diff the compatibility contract's `known_fields` per node type against what the skill documents. This is the most reliable check available.
 3. Re-read the built-in registration calls in the runtime and update `references/builtins.md`. Take function names and arity from the registrations, not from prose.
 4. Re-run `<command> --help` for every command in `references/cli-commands.md`.
-5. Check the editor's contract bundle version and update the lag note in `references/editor.md`.
+5. Check the active editor/Studio version. Keep compatibility notes version-aware rather than claiming a permanent lag.
 6. Validate every example:
 
 ```bash
-for f in skills/relampo/assets/examples/*.yaml; do relampo validate "$f"; done
+relampo validate skills/relampo/assets/examples/health-smoke.yaml
 ```
+Repeat for every YAML under `assets/examples/`, including the Spark and scoped-data examples. Use a temporary checksum-verified release binary if the installed CLI differs. Keep the installed CLI unchanged.
 
-`relampo validate` is **lenient**. It accepts unknown assertion types, unknown load types, and misspelled built-ins. It proves the file parses, not that it is correct. Verify field names against the contract, not against a passing validation.
+`validate` checks structure and built-in names, syntax, arity, and constant types. Unknown model fields and dynamic values still need source checks. A passing validation does not prove a successful API flow. Verify field execution, not only field presence in a contract.
 
 7. Update `CHANGELOG.md` and `metadata.version` in `SKILL.md`.
+8. Check local reference links, example data paths, command flags, and the one-scenario limit. Sync installed copies only after validation. Preserve unrelated local files.
 
 ## Publishing
 

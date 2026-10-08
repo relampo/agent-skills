@@ -1,6 +1,6 @@
 # Load profiles and Load by Intent
 
-Every scenario has one `load` block. Targets YAML contract **1.0.5**.
+Use one scenario per file. Baseline: CLI **v2.10.3**, compatibility contract **1.0.10**. A `load` block is optional for a functional smoke flow.
 
 ## Common fields
 
@@ -77,7 +77,7 @@ Rules:
 - `open_ended: true` is allowed on the last stage only, and it replaces that stage's `duration`.
 - These top-level fields are rejected with `stages`: `users`, `start_users`, `end_users`, `ramp_up`, `ramp_down`, `iterations`, `target_rps`, `target_unit`, `target_value`, `min_vus`, `max_vus`, `aggressiveness`.
 - **`--vus`, `--duration`, and `--rps` are also rejected** for a staged scenario. Edit the stages instead.
-- The **editor rejects `stages` entirely**. The CLI runs them. See [editor.md](editor.md).
+- Some editor builds reject `stages`. The CLI runs them. See [editor.md](editor.md).
 
 ## Load by Intent
 
@@ -111,6 +111,7 @@ Required for `intent`: `target_value` above 0, and `min_vus`/`max_vus` above 0 w
 | `p999_max_ms` | |
 
 Use `intent` to answer "what load can this survive within these limits". Use `constant` to answer "how does it behave at exactly this load".
+Intent execution requires one node in this baseline. Do not request a multi-node distributed intent search.
 
 ## run_until_stopped
 

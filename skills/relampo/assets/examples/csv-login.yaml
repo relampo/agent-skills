@@ -1,6 +1,6 @@
 test:
   name: "CSV-driven login smoke"
-  description: "Per-VU CSV credentials with status assertion"
+  description: "Process-shared synthetic credentials with status assertion"
   version: "1.0"
 
 variables:
@@ -9,10 +9,10 @@ variables:
 data_source:
   type: csv
   file: "users.csv"
-  mode: per_vu
+  mode: shared
   strategy: sequential
   variable_names: "email,password"
-  on_exhausted: stop
+  on_exhausted: recycle
 
 http_defaults:
   base_url: "{{base_url}}"

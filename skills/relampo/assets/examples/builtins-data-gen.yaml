@@ -1,6 +1,6 @@
 test:
   name: "Signup with generated data"
-  description: "Built-in functions for unique per-iteration test data"
+  description: "Built-in functions for independent account data"
   version: "1.0"
 
 variables:
@@ -29,7 +29,7 @@ scenarios:
             X-Request-Id: "{{_uuid()}}"
             X-Signature: "{{_hmacSha256({{_concat(\"signup-\",{{_timestamp()}})}},{{signing_secret}})}}"
           body:
-            email: "user{{_counter(1,1,\"signup\")}}@example.com"
+            email: "user-{{_uuid()}}@example.com"
             password: "{{_randomAlphanumeric(16)}}"
             display_name: "{{_titleCase({{_randomFrom(\"ada lovelace\",\"grace hopper\",\"alan turing\")}})}}"
             plan: "{{_randomFrom(\"free\",\"pro\",\"team\")}}"

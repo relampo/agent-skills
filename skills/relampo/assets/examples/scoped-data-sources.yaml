@@ -1,0 +1,54 @@
+test:
+  name: "Root, step, and request datasets"
+  description: "Independent CSV bindings at three execution points"
+  version: "1.0"
+
+variables:
+  base_url: "https://api.example.com"
+
+data_source:
+  type: csv
+  file: data/tenants.csv
+  bind:
+    tenant: tenant_id
+  mode: per_vu
+  strategy: sequential
+  on_exhausted: stop
+
+http_defaults:
+  base_url: "{{base_url}}"
+  timeout: 10s
+
+scenarios:
+  - name: "Dataset binding order"
+    load:
+      type: constant
+      users: 1
+      iterations: 1
+    steps:
+      - data_source:
+          type: csv
+          file: data/products.csv
+          bind:
+            product: product_id
+          mode: per_vu
+          strategy: sequential
+          on_exhausted: stop
+      - request:
+          name: "Quote product"
+          method: POST
+          url: "/tenants/{{tenant_id}}/quotes"
+          data_source:
+            type: csv
+            file: data/regions.csv
+            bind:
+              region: region_id
+            mode: per_vu
+            strategy: sequential
+            on_exhausted: stop
+          body:
+            product: "{{product_id}}"
+            region: "{{region_id}}"
+          assertions:
+            - type: status
+              value: 200

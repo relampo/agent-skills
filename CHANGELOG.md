@@ -1,5 +1,35 @@
 # Changelog
 
+## 1.1.0
+
+Refresh against released CLI **v2.10.3** and compatibility contract **1.0.10**.
+
+### Added
+
+- Spark before/after HTTP hook reference and a complete example.
+- Root, step, and request CSV bindings with bundled synthetic datasets.
+- GitLab.com and Self-Managed execution examples, runner tags, and provider prerequisites.
+- Persistent Studio dataset storage, encoded WebRTC media limits, HTTP connection scope, and DNS cache fields.
+- Explicit approval boundaries for distributed publication and dataset exposure.
+
+### Changed
+
+- Replace removed `distributed` commands with `github` and document `gitlab`.
+- Separate free-tier limits from active license limits.
+- Explain automatic CSV/TXT packaging, including files ignored by the execution repository.
+- Distributed report flags take filenames only; download GitHub publications or GitLab job artifacts manually.
+- Document built-in static validation, HTTP preparation failures, and per-occurrence generation versus request-cached variables.
+- Keep editor compatibility notes version-aware instead of assuming a fixed contract lag.
+
+### Fixed
+
+- Correct CSV cursor modes, uniqueness, exhaustion, and relative path resolution.
+- Require one scenario per file for CLI and workers, not only the editor.
+- Explain `one_time` per-VU execution and working HTTP status/timeout policies.
+- Correct WebRTC signaling order and protocol-specific assertion support.
+- Remove unsupported `sql_connection` and standalone throughput guidance.
+- Correct root cookie/cache fields, scenario pauses, multipart failure behavior, and per-VU counter uniqueness assumptions.
+
 ## 1.0.1
 
 Full refresh against Relampo YAML contract **1.0.5**, tested with CLI builds from 2026-08-26.

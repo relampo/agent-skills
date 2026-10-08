@@ -1,8 +1,8 @@
 # Non-HTTP protocols
 
-Relampo runs WebSocket, gRPC, WebRTC, and SQL steps beside HTTP steps in the same scenario. Variables, extractors, and assertions work across all of them.
+Relampo runs WebSocket, gRPC, WebRTC, and SQL steps beside HTTP steps. Variable support and checks depend on the protocol; SQL does not expose the HTTP extractor/assertion lists.
 
-Targets YAML contract **1.0.5**.
+Baseline: CLI **v2.10.3**, compatibility contract **1.0.10**.
 
 Check any script that mixes protocols before you run it:
 
@@ -111,7 +111,7 @@ relampo record grpc --upstream api.example.com:443 --protoset ./api.protoset --o
 
 The most complex step type. A `webrtc` container holds `data_channels` and `media_tracks`, then a `steps` list of actions.
 
-The first two actions must be `webrtc_offer` then `webrtc_connect`, in that order.
+Exactly one direct `webrtc_offer` must precede one direct `webrtc_connect`. HTTP signaling steps can run between them. Nested WebRTC containers and `parallel`, `one_time`, or `balanced` inside WebRTC are unsupported.
 
 | Container field | Notes |
 | --- | --- |
@@ -141,6 +141,19 @@ The first two actions must be `webrtc_offer` then `webrtc_connect`, in that orde
     steps:
       - webrtc_offer:
           export: __relampo_webrtc_offer
+      - request:
+          name: "Exchange SDP"
+          method: POST
+          url: https://api.example.com/signaling
+          body:
+            sdp: "{{__relampo_webrtc_offer}}"
+          extractors:
+            - type: jsonpath
+              var: __relampo_webrtc_answer
+              path: $.sdp
+          assertions:
+            - type: status
+              value: 200
       - webrtc_connect:
           answer: "{{__relampo_webrtc_answer}}"
       - webrtc_wait_state:
@@ -157,6 +170,19 @@ The first two actions must be `webrtc_offer` then `webrtc_connect`, in that orde
 The signalling exchange runs through your own HTTP steps. Export the offer, POST it to your signalling endpoint with a normal request, extract the answer into a `__relampo_`-prefixed variable, then pass it to `webrtc_connect`.
 
 The `__relampo_` prefix matters: names with two leading underscores are always variables and never parsed as built-in functions.
+
+### Encoded audio/video
+
+Media sources must already be encoded:
+
+- Audio: Opus in Ogg.
+- Video: VP8/VP9 in IVF, or H.264 Annex-B.
+- Sending tracks require `source`; `recvonly` forbids it.
+- Source paths resolve from the YAML directory. Sending starts after connection.
+- `loop` defaults to false. `sample_duration` is an optional positive timing override.
+- Limits: 8 tracks, 256 MiB per regular source file, and 4 MiB per encoded sample.
+
+Receive tracks drain and count RTP packets for quality metrics. They do not decode/play media or support media-content assertions. There is no transcoding, browser media capture, or WebRTC recording. Offerer-side signaling remains your YAML's responsibility.
 
 ## SQL
 
@@ -191,7 +217,7 @@ Use SQL steps for setup, teardown, and verification. They do not measure your ap
       - "{{email}}"
 ```
 
-Postgres uses `$1`, `$2`. MySQL uses `?`. Keep credentials in variables and supply them at run time with `--var` or `--vars-file`, so no secret is committed.
+Postgres uses `$1`, `$2`. MySQL uses `?`. Keep credentials in variables supplied from the environment or an untracked vars file. Keep values out of command literals and committed files.
 
 Writes need both settings:
 
@@ -206,4 +232,4 @@ Writes need both settings:
     params: ["{{customer_id}}"]
 ```
 
-Put write steps inside `one_time` so they run once instead of on every iteration of every VU.
+`one_time` runs once **per VU**. It does not make a database write run-wide. Use idempotent per-user setup there; prepare global fixtures separately before load. SQL parameters prevent value concatenation, but they do not make writes safe to repeat.
