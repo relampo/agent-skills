@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1
+
+### Added
+
+- JMeter migration reference with component mappings, scope rules, behavior differences, and a complete login example.
+- Explicit JMeter/.jmx routing in the skill description and workflow.
+
 ## 1.1.0
 
 Refresh against released CLI **v2.10.3** and compatibility contract **1.0.10**.

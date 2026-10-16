@@ -6,13 +6,13 @@ description: >
   scenario.yaml, correlate tokens/sessions/CSRF, extractors, assertions, Load by Intent,
   distributed load via GitHub Actions or GitLab, recording HTTP traffic into YAML, converting
   Postman/collections into load scripts, debugging multi-step API flows before load,
-  JMeter-like declarative scripts, or needs a k6/JMeter alternative that stays in YAML.
+  migrating JMeter/.jmx plans, or needs a k6/JMeter alternative that stays in YAML.
   Also use when installing or setting up the Relampo CLI, writing smoke performance tests,
   fixing broken dynamic values in recorded flows, scoped CSV/TXT datasets, or Spark request hooks.
 license: MIT
 metadata:
   author: relampo
-  version: "1.1.0"
+  version: "1.1.1"
   docs: https://docs.relampo.com
 ---
 
@@ -68,6 +68,7 @@ setup → record | converter → correlate [--apply] → validate → smoke → 
 **Decision tree**
 - Have a live UI/API flow to capture → **record** (proxy client through `:8888`).
 - Have Postman/collection-like assets → **converter**.
+- Have a JMeter plan (`.jmx`) → read [jmeter-migration.md](references/jmeter-migration.md) before translating components or load settings.
 - Know the HTTP sequence already → **hand-write YAML** from the template below.
 - After any record/convert/manual edit → **correlate** if responses create tokens/ids reused later.
 - Before load → **validate**, then smoke-test the flow on an approved target. `run` validates again before execution.
@@ -198,6 +199,7 @@ Read only what the task needs:
 | File | When |
 | --- | --- |
 | [references/yaml-spec.md](references/yaml-spec.md) | Authoring or editing YAML structure |
+| [references/jmeter-migration.md](references/jmeter-migration.md) | Migrating JMeter/.jmx plans, component mappings, and behavior differences |
 | [references/builtins.md](references/builtins.md) | Test data, value transforms, date and crypto helpers |
 | [references/data-sources.md](references/data-sources.md) | CSV/TXT parameterization |
 | [references/spark.md](references/spark.md) | Before/after HTTP hooks and variable logic |

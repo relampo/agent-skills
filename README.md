@@ -55,6 +55,7 @@ skills/
     SKILL.md
     references/
       yaml-spec.md        # full schema
+      jmeter-migration.md # JMeter mappings and behavior differences
       builtins.md         # ~180 built-in functions
       data-sources.md     # CSV/TXT parameterization
       spark.md            # request-local JavaScript hooks
